@@ -1,0 +1,22 @@
+- name: Configure Web Server
+  hosts: all
+  become: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  tasks:
+    - name: "install server"
+      dnf:
+        name: "httpd"
+        state: present
+
+    - name: "copying websitee"
+      copy:
+        src: index.html
+        dest: /var/www/html/index.html
+
+
+    - name: "start service"
+      service:
+        name: "httpd"
+        state: started
+        enabled: yes
