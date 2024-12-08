@@ -1,0 +1,66 @@
+pipeline {
+    agent any
+    environment {
+        workspace = '/var/lib/jenkins/workspace/new'  
+        ANSIBLE_PRIVATE_KEY = '/var/lib/jenkins/workspace/new/project_key.pem'  
+    }
+    stages{
+       stage('Fix Permissions') {
+    steps {
+      
+        sh 'chown -R jenkins:jenkins /var/lib/jenkins/workspace/new'
+        sh 'chmod -R 600 /var/lib/jenkins/workspace/new/project_key.pem'
+        sh 'chmod -R 777 /var/lib/jenkins/workspace/new/.terraform'
+    }
+ }
+     
+        stage('Terraform Init') {
+            steps {
+                
+                dir("${env.workspace}") {
+                    sh 'terraform init'
+                }
+            }
+        }
+        stage('Terraform Apply') {
+            steps {
+             
+                dir("${env.workspace}") {
+                    sh """
+                      terraform apply -auto-approve  
+                    """
+                }
+            }
+        }
+        stage('Extract EC2 IP') {
+            steps {
+                script {
+                   
+                    env.INSTANCE_IP = sh(
+                        script: "cd ${env.workspace} && terraform output -raw instance_ip",
+                        returnStdout: true
+                    ).trim()
+                }
+              
+                echo "Instance IP: ${env.INSTANCE_IP}"
+            }
+        }
+        stage('Run Ansible Playbook') {
+            steps {
+                dir("${env.workspace}") {
+                script {
+                  
+                    writeFile file: 'inventory', text: """
+[webserver]
+${env.INSTANCE_IP} ansible_user=ec2-user ansible_ssh_private_key_file=/var/lib/jenkins/workspace/new/project_key.pem ansible_python_interpreter=/usr/bin/python3.9 ansible_connection=ssh ansible_ssh_common_args='-o StrictHostKeyChecking=no' 
+                    """
+                  
+                    sh """
+                    ansible-playbook -i  inventory ${env.workspace}/playbook.yml
+                    """
+                }
+              }    
+            }
+        }
+    }
+}
